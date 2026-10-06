@@ -1,0 +1,7 @@
+ALTER TYPE "AppointmentMessageType" ADD VALUE IF NOT EXISTS 'BIRTHDAY_GREETING';
+
+ALTER TABLE "Patient"
+  ADD COLUMN "whatsappOptIn" BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE "AppointmentMessage"
+  ALTER COLUMN "appointmentId" DROP NOT NULL;

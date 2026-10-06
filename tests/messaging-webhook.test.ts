@@ -89,7 +89,9 @@ describe("webhook de mensagens", () => {
     );
     expect(response.status).toBe(200);
     expect(mocks.messageFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { providerMessageId: "wamid.sent" } }),
+      expect.objectContaining({
+        where: { providerMessageId: "wamid.sent", type: "CONFIRMATION_REQUEST" },
+      }),
     );
     expect(mocks.appointmentUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: "CONFIRMED" }) }),

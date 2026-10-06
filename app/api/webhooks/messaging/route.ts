@@ -85,14 +85,14 @@ async function updateDeliveryStatus(status: WhatsAppStatus) {
 
 async function applyPatientAction(input: PatientAction) {
   const message = await prisma.appointmentMessage.findFirst({
-    where: { providerMessageId: input.providerMessageId },
+    where: { providerMessageId: input.providerMessageId, type: "CONFIRMATION_REQUEST" },
     include: {
       appointment: {
         select: { id: true, dentistId: true, clinicId: true, status: true },
       },
     },
   });
-  if (!message) return;
+  if (!message?.appointment) return;
   if (!["SCHEDULED", "CONFIRMATION_PENDING"].includes(message.appointment.status)) return;
 
   const confirmed = input.action === "CONFIRM";

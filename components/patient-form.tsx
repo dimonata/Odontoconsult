@@ -14,6 +14,7 @@ type InitialPatient = {
   cpf: string;
   phone: string;
   birthDate: string;
+  whatsappOptIn: boolean;
   notes: string | null;
   photoUrl: string | null;
 };
@@ -50,6 +51,7 @@ export function PatientForm({
       cpf: String(form.get("cpf") ?? ""),
       phone: String(form.get("phone") ?? ""),
       birthDate: String(form.get("birthDate") ?? ""),
+      whatsappOptIn: form.get("whatsappOptIn") === "on",
       notes: String(form.get("notes") ?? ""),
     };
     const parsed = patientSchema.safeParse(payload);
@@ -250,6 +252,22 @@ export function PatientForm({
                 {errors.birthDate}
               </p>
             )}
+          </div>
+          <div className="sm:col-span-2">
+            <label className="flex items-start gap-3 rounded-xl border p-4">
+              <input
+                className="mt-1 size-4"
+                type="checkbox"
+                name="whatsappOptIn"
+                defaultChecked={initial?.whatsappOptIn ?? false}
+              />
+              <span>
+                <span className="block font-medium">Autoriza mensagens pelo WhatsApp</span>
+                <span className="mt-1 block text-sm" style={{ color: "var(--muted)" }}>
+                  O paciente autorizou confirmações de consulta e mensagens de aniversário.
+                </span>
+              </span>
+            </label>
           </div>
           <div className="sm:col-span-2">
             <label className="label" htmlFor="notes">

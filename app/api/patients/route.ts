@@ -33,6 +33,7 @@ export async function POST(request: Request) {
           phone: formatPhone(phoneNormalized),
           phoneNormalized,
           birthDate: civilDate(input.birthDate),
+          whatsappOptIn: input.whatsappOptIn,
           notes: input.notes || null,
         },
         select: { id: true, fullName: true },

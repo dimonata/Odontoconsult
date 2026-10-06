@@ -71,6 +71,7 @@ export async function getPatient(context: AuthContext, patientId: string) {
         cpf: true,
         phone: true,
         birthDate: true,
+        whatsappOptIn: true,
         notes: true,
         createdAt: true,
         updatedAt: true,

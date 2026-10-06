@@ -41,6 +41,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
             ? { phone: formatPhone(input.phone), phoneNormalized: onlyDigits(input.phone) }
             : {}),
           ...(input.birthDate !== undefined ? { birthDate: civilDate(input.birthDate) } : {}),
+          ...(input.whatsappOptIn !== undefined ? { whatsappOptIn: input.whatsappOptIn } : {}),
           ...(input.notes !== undefined ? { notes: input.notes || null } : {}),
         },
       });

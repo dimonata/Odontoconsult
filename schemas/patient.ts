@@ -21,6 +21,7 @@ export const patientSchema = z.object({
     .trim()
     .refine((value) => [10, 11].includes(onlyDigits(value).length), "Telefone inválido."),
   birthDate: civilDateSchema,
+  whatsappOptIn: z.boolean().optional().default(false),
   notes: z.string().trim().max(5000).optional().default(""),
 });
 

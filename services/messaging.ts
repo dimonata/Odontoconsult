@@ -1,6 +1,6 @@
 import "server-only";
 
-export type MessageInput = {
+export type ConfirmationMessageInput = {
   to: string;
   patientFirstName: string;
   clinicName: string;
@@ -8,15 +8,31 @@ export type MessageInput = {
   time: string;
 };
 
+export type BirthdayMessageInput = Pick<
+  ConfirmationMessageInput,
+  "to" | "patientFirstName" | "clinicName"
+>;
+
 export interface MessagingProvider {
   readonly name: string;
-  sendConfirmation(input: MessageInput): Promise<{ providerMessageId: string }>;
+  sendConfirmation(input: ConfirmationMessageInput): Promise<{ providerMessageId: string }>;
+  sendBirthday(input: BirthdayMessageInput): Promise<{ providerMessageId: string }>;
 }
 
 class WhatsAppCloudProvider implements MessagingProvider {
   readonly name = "WHATSAPP_CLOUD";
 
-  async sendConfirmation(input: MessageInput) {
+  private async sendTemplate(input: {
+    to: string;
+    templateName: string;
+    parameters: Array<{ type: "text"; text: string }>;
+    buttons?: Array<{
+      type: "button";
+      sub_type: "quick_reply";
+      index: string;
+      parameters: Array<{ type: "payload"; payload: string }>;
+    }>;
+  }) {
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     if (!token || !phoneNumberId) throw new Error("MESSAGING_NOT_CONFIGURED");
@@ -34,30 +50,14 @@ class WhatsAppCloudProvider implements MessagingProvider {
           to: recipient,
           type: "template",
           template: {
-            name: process.env.WHATSAPP_CONFIRMATION_TEMPLATE ?? "appointment_confirmation",
+            name: input.templateName,
             language: { code: "pt_BR" },
             components: [
               {
                 type: "body",
-                parameters: [
-                  { type: "text", text: input.patientFirstName },
-                  { type: "text", text: input.clinicName },
-                  { type: "text", text: input.date },
-                  { type: "text", text: input.time },
-                ],
+                parameters: input.parameters,
               },
-              {
-                type: "button",
-                sub_type: "quick_reply",
-                index: "0",
-                parameters: [{ type: "payload", payload: "CONFIRM" }],
-              },
-              {
-                type: "button",
-                sub_type: "quick_reply",
-                index: "1",
-                parameters: [{ type: "payload", payload: "CANCEL" }],
-              },
+              ...(input.buttons ?? []),
             ],
           },
         }),
@@ -68,6 +68,44 @@ class WhatsAppCloudProvider implements MessagingProvider {
     const providerMessageId = payload.messages?.[0]?.id;
     if (!providerMessageId) throw new Error("WHATSAPP_INVALID_RESPONSE");
     return { providerMessageId };
+  }
+
+  sendConfirmation(input: ConfirmationMessageInput) {
+    return this.sendTemplate({
+      to: input.to,
+      templateName: process.env.WHATSAPP_CONFIRMATION_TEMPLATE ?? "appointment_confirmation",
+      parameters: [
+        { type: "text", text: input.patientFirstName },
+        { type: "text", text: input.clinicName },
+        { type: "text", text: input.date },
+        { type: "text", text: input.time },
+      ],
+      buttons: [
+        {
+          type: "button",
+          sub_type: "quick_reply",
+          index: "0",
+          parameters: [{ type: "payload", payload: "CONFIRM" }],
+        },
+        {
+          type: "button",
+          sub_type: "quick_reply",
+          index: "1",
+          parameters: [{ type: "payload", payload: "CANCEL" }],
+        },
+      ],
+    });
+  }
+
+  sendBirthday(input: BirthdayMessageInput) {
+    return this.sendTemplate({
+      to: input.to,
+      templateName: process.env.WHATSAPP_BIRTHDAY_TEMPLATE ?? "birthday_greeting",
+      parameters: [
+        { type: "text", text: input.patientFirstName },
+        { type: "text", text: input.clinicName },
+      ],
+    });
   }
 }
 
