@@ -1,0 +1,461 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ClinicRole {
+  OWNER
+  DENTIST
+  RECEPTIONIST
+}
+
+enum MemberStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum FileCategory {
+  RADIOGRAPH
+  PHOTOGRAPH
+  DOCUMENT
+  EXAM
+  OTHER
+}
+
+enum AuditAction {
+  CLINIC_CREATED
+  PATIENT_CREATED
+  PATIENT_UPDATED
+  FILE_UPLOADED
+  FILE_DELETED
+  PROCEDURE_CREATED
+  PROCEDURE_UPDATED
+  PROFILE_UPDATED
+  APPOINTMENT_CREATED
+  APPOINTMENT_UPDATED
+  APPOINTMENT_RESCHEDULED
+  APPOINTMENT_CANCELLED
+  APPOINTMENT_CONFIRMED
+  REMINDER_SENT
+  REMINDER_FAILED
+  GOOGLE_CALENDAR_SYNCED
+  GOOGLE_CALENDAR_SYNC_FAILED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMATION_PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum CancellationSource {
+  PATIENT
+  DENTIST
+  SYSTEM
+}
+
+enum CalendarSyncStatus {
+  NOT_CONNECTED
+  PENDING
+  SYNCED
+  FAILED
+}
+
+enum AppointmentMessageType {
+  CONFIRMATION_REQUEST
+  CONFIRMATION_RESPONSE
+  CANCELLATION_RESPONSE
+}
+
+enum AppointmentMessageStatus {
+  QUEUED
+  PROCESSING
+  SENT
+  DELIVERED
+  FAILED
+  RESPONDED
+}
+
+enum ThemePreference {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum SubscriptionStatus {
+  PENDING
+  AUTHORIZED
+  PAUSED
+  CANCELLED
+}
+
+model User {
+  id                 String                @id @default(cuid())
+  name               String?
+  email              String?               @unique
+  emailVerified      DateTime?
+  image              String?
+  customImageKey     String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  accounts           Account[]
+  sessions           Session[]
+  memberships        ClinicMember[]
+  uploadedFiles      PatientFile[]
+  createdProcedures  Procedure[]           @relation("ProcedureCreatedBy")
+  auditLogs          AuditLog[]
+  preference         UserPreference?
+  appointments       Appointment[]         @relation("AppointmentDentist")
+  calendarLinks      CalendarIntegration[]
+  appointmentChanges AppointmentHistory[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Clinic {
+  id                      String                @id @default(cuid())
+  name                    String
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  members                 ClinicMember[]
+  patients                Patient[]
+  procedureTypes          ProcedureType[]
+  procedures              Procedure[]
+  files                   PatientFile[]
+  auditLogs               AuditLog[]
+  timezone                String                @default("America/Sao_Paulo")
+  confirmationLeadMinutes Int                   @default(1440)
+  appointmentTypes        AppointmentType[]
+  appointments            Appointment[]
+  appointmentMessages     AppointmentMessage[]
+  appointmentChanges      AppointmentHistory[]
+  calendarLinks           CalendarIntegration[]
+  subscription            Subscription?
+}
+
+model BillingPlan {
+  id             String   @id
+  providerPlanId String   @unique
+  amountCents    Int
+  currency       String   @default("BRL")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Subscription {
+  id                     String             @id @default(cuid())
+  clinicId               String             @unique
+  provider               String             @default("MERCADO_PAGO")
+  providerPlanId         String?
+  providerSubscriptionId String?            @unique
+  providerStatus         String?
+  status                 SubscriptionStatus @default(PENDING)
+  payerEmail             String
+  amountCents            Int
+  currency               String             @default("BRL")
+  checkoutUrl            String?
+  trialEndsAt            DateTime?          @db.Timestamptz(3)
+  nextPaymentAt          DateTime?          @db.Timestamptz(3)
+  lastSyncedAt           DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  clinic                 Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt])
+}
+
+model ClinicMember {
+  id        String       @id @default(cuid())
+  clinicId  String
+  userId    String
+  role      ClinicRole   @default(DENTIST)
+  status    MemberStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  clinic    Clinic       @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, userId])
+  @@index([userId, status])
+}
+
+model Patient {
+  id                  String               @id @default(cuid())
+  clinicId            String
+  fullName            String
+  cpf                 String
+  cpfNormalized       String
+  phone               String
+  phoneNormalized     String
+  birthDate           DateTime             @db.Date
+  notes               String?
+  photoFileId         String?              @unique
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  archivedAt          DateTime?
+  clinic              Clinic               @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  photoFile           PatientFile?         @relation("PatientPhoto", fields: [photoFileId], references: [id], onDelete: SetNull)
+  files               PatientFile[]        @relation("PatientFiles")
+  procedures          Procedure[]
+  appointments        Appointment[]
+  appointmentMessages AppointmentMessage[]
+
+  @@unique([clinicId, cpfNormalized])
+  @@index([clinicId, fullName])
+  @@index([clinicId, phoneNormalized])
+  @@index([clinicId, archivedAt, createdAt])
+}
+
+model AppointmentType {
+  id             String        @id @default(cuid())
+  clinicId       String
+  name           String
+  color          String        @default("#087f8c")
+  defaultMinutes Int           @default(60)
+  active         Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  clinic         Clinic        @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  appointments   Appointment[]
+
+  @@unique([clinicId, name])
+  @@index([clinicId, active])
+}
+
+model Appointment {
+  id                      String               @id @default(cuid())
+  clinicId                String
+  patientId               String
+  dentistId               String
+  appointmentTypeId       String
+  startAt                 DateTime             @db.Timestamptz(3)
+  endAt                   DateTime             @db.Timestamptz(3)
+  status                  AppointmentStatus    @default(SCHEDULED)
+  notes                   String?
+  googleCalendarId        String?
+  googleEventId           String?
+  calendarSyncStatus      CalendarSyncStatus   @default(NOT_CONNECTED)
+  calendarSyncError       String?
+  confirmationScheduledAt DateTime?            @db.Timestamptz(3)
+  confirmationSentAt      DateTime?            @db.Timestamptz(3)
+  confirmedAt             DateTime?            @db.Timestamptz(3)
+  cancelledAt             DateTime?            @db.Timestamptz(3)
+  cancellationSource      CancellationSource?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  clinic                  Clinic               @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  patient                 Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  dentist                 User                 @relation("AppointmentDentist", fields: [dentistId], references: [id], onDelete: Restrict)
+  appointmentType         AppointmentType      @relation(fields: [appointmentTypeId], references: [id], onDelete: Restrict)
+  messages                AppointmentMessage[]
+  history                 AppointmentHistory[]
+
+  @@unique([clinicId, googleCalendarId, googleEventId])
+  @@index([clinicId, startAt, endAt])
+  @@index([clinicId, patientId, startAt])
+  @@index([clinicId, dentistId, startAt])
+  @@index([confirmationScheduledAt, confirmationSentAt, status])
+}
+
+model AppointmentMessage {
+  id                String                   @id @default(cuid())
+  appointmentId     String
+  clinicId          String
+  patientId         String
+  provider          String
+  providerMessageId String?
+  idempotencyKey    String                   @unique
+  type              AppointmentMessageType
+  status            AppointmentMessageStatus @default(QUEUED)
+  sentAt            DateTime?                @db.Timestamptz(3)
+  deliveredAt       DateTime?                @db.Timestamptz(3)
+  respondedAt       DateTime?                @db.Timestamptz(3)
+  failureCode       String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  appointment       Appointment              @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  clinic            Clinic                   @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  patient           Patient                  @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([clinicId, appointmentId, createdAt])
+  @@index([status, createdAt])
+}
+
+model AppointmentHistory {
+  id              String             @id @default(cuid())
+  appointmentId   String
+  clinicId        String
+  changedById     String
+  action          AuditAction
+  previousStartAt DateTime?          @db.Timestamptz(3)
+  previousEndAt   DateTime?          @db.Timestamptz(3)
+  newStartAt      DateTime?          @db.Timestamptz(3)
+  newEndAt        DateTime?          @db.Timestamptz(3)
+  previousStatus  AppointmentStatus?
+  newStatus       AppointmentStatus?
+  createdAt       DateTime           @default(now())
+  appointment     Appointment        @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  clinic          Clinic             @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  changedBy       User               @relation(fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([clinicId, appointmentId, createdAt])
+}
+
+model CalendarIntegration {
+  id                    String    @id @default(cuid())
+  clinicId              String
+  userId                String
+  googleAccountEmail    String?
+  googleCalendarId      String    @default("primary")
+  googleCalendarName    String?
+  encryptedAccessToken  String?
+  encryptedRefreshToken String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  scope                 String?
+  connectedAt           DateTime  @default(now())
+  revokedAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  clinic                Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, userId])
+  @@index([clinicId, revokedAt])
+}
+
+model ProcedureType {
+  id         String      @id @default(cuid())
+  clinicId   String
+  name       String
+  active     Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  clinic     Clinic      @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  procedures Procedure[]
+
+  @@unique([clinicId, name])
+  @@index([clinicId, active])
+}
+
+model Procedure {
+  id                 String           @id @default(cuid())
+  clinicId           String
+  patientId          String
+  procedureTypeId    String
+  performedAt        DateTime         @db.Date
+  chargedAmountCents BigInt
+  costCents          BigInt           @default(0)
+  description        String?
+  createdById        String
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+  clinic             Clinic           @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  patient            Patient          @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  procedureType      ProcedureType    @relation(fields: [procedureTypeId], references: [id], onDelete: Restrict)
+  createdBy          User             @relation("ProcedureCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  teeth              ProcedureTooth[]
+
+  @@index([clinicId, performedAt])
+  @@index([clinicId, patientId, performedAt])
+  @@index([clinicId, procedureTypeId])
+}
+
+model ProcedureTooth {
+  procedureId String
+  toothNumber Int
+  procedure   Procedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+
+  @@id([procedureId, toothNumber])
+  @@index([toothNumber])
+}
+
+model PatientFile {
+  id              String       @id @default(cuid())
+  clinicId        String
+  patientId       String
+  originalName    String
+  storageKey      String       @unique
+  mimeType        String
+  sizeBytes       Int
+  category        FileCategory
+  uploadedById    String
+  createdAt       DateTime     @default(now())
+  deletedAt       DateTime?
+  clinic          Clinic       @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  patient         Patient      @relation("PatientFiles", fields: [patientId], references: [id], onDelete: Restrict)
+  uploadedBy      User         @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  profilePhotoFor Patient?     @relation("PatientPhoto")
+
+  @@index([clinicId, patientId, deletedAt])
+  @@index([clinicId, createdAt])
+}
+
+model UserPreference {
+  id                 String          @id @default(cuid())
+  userId             String          @unique
+  theme              ThemePreference @default(SYSTEM)
+  workdayStartMinute Int             @default(420)
+  workdayEndMinute   Int             @default(1200)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  clinicId   String
+  userId     String
+  action     AuditAction
+  entityType String
+  entityId   String
+  createdAt  DateTime    @default(now())
+  clinic     Clinic      @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([clinicId, createdAt])
+  @@index([clinicId, entityType, entityId])
+}

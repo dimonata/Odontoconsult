@@ -1,0 +1,3 @@
+ALTER TABLE "UserPreference"
+  ADD COLUMN "workdayStartMinute" INTEGER NOT NULL DEFAULT 420,
+  ADD COLUMN "workdayEndMinute" INTEGER NOT NULL DEFAULT 1200;
