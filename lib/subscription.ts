@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { SubscriptionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { AppError } from "@/lib/errors";
+import { lifetimeCouponHash, matchesLifetimeCoupon } from "@/lib/lifetime-coupon";
 
 type ProviderSubscription = {
   id: string;
@@ -84,6 +85,14 @@ function optionalDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function validLifetimeCoupon(code: string) {
+  const configuredHash = process.env.ODONTOFLOW_LIFETIME_COUPON_HASH?.trim().toLowerCase();
+  if (!configuredHash || !/^[a-f\d]{64}$/.test(configuredHash)) {
+    throw new AppError(503, "O cupom vitalício não está configurado.", "COUPON_NOT_CONFIGURED");
+  }
+  return matchesLifetimeCoupon(code, configuredHash);
+}
+
 async function createCheckoutPlan(returnUrl: string, clinicId: string) {
   const { amountCents, currency } = config();
   const configuredPlanId = process.env.MERCADO_PAGO_PLAN_ID?.trim();
@@ -125,6 +134,70 @@ export async function requirePremiumAccess(clinicId: string) {
 
 export async function getSubscription(clinicId: string) {
   return prisma.subscription.findUnique({ where: { clinicId } });
+}
+
+export async function redeemLifetimeCoupon(input: {
+  clinicId: string;
+  userId: string;
+  payerEmail: string;
+  code: string;
+}) {
+  if (!validLifetimeCoupon(input.code)) {
+    throw new AppError(422, "Cupom inválido ou já utilizado.", "INVALID_COUPON");
+  }
+  const codeHash = lifetimeCouponHash(input.code);
+  return prisma.$transaction(async (tx) => {
+    const [redemption, current] = await Promise.all([
+      tx.lifetimeCouponRedemption.findUnique({ where: { codeHash } }),
+      tx.subscription.findUnique({ where: { clinicId: input.clinicId } }),
+    ]);
+    if (redemption && redemption.clinicId !== input.clinicId) {
+      throw new AppError(422, "Cupom inválido ou já utilizado.", "INVALID_COUPON");
+    }
+    if (current?.providerSubscriptionId) {
+      throw new AppError(
+        409,
+        "Existe uma assinatura do Mercado Pago vinculada. Cancele-a antes de usar o cupom.",
+        "PROVIDER_SUBSCRIPTION_EXISTS",
+      );
+    }
+    if (!redemption) {
+      await tx.lifetimeCouponRedemption.create({
+        data: {
+          codeHash,
+          clinicId: input.clinicId,
+          redeemedById: input.userId,
+        },
+      });
+    }
+    return tx.subscription.upsert({
+      where: { clinicId: input.clinicId },
+      create: {
+        clinicId: input.clinicId,
+        provider: "PROMO_LIFETIME",
+        providerStatus: "lifetime",
+        status: "AUTHORIZED",
+        payerEmail: input.payerEmail,
+        amountCents: 0,
+        currency: "BRL",
+        lastSyncedAt: new Date(),
+      },
+      update: {
+        provider: "PROMO_LIFETIME",
+        providerPlanId: null,
+        providerSubscriptionId: null,
+        providerStatus: "lifetime",
+        status: "AUTHORIZED",
+        payerEmail: input.payerEmail,
+        amountCents: 0,
+        currency: "BRL",
+        checkoutUrl: null,
+        trialEndsAt: null,
+        nextPaymentAt: null,
+        lastSyncedAt: new Date(),
+      },
+    });
+  });
 }
 
 export async function createSubscriptionCheckout(input: {

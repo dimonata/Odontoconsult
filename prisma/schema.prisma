@@ -99,24 +99,25 @@ enum SubscriptionStatus {
 }
 
 model User {
-  id                 String                @id @default(cuid())
+  id                 String                     @id @default(cuid())
   name               String?
-  email              String?               @unique
+  email              String?                    @unique
   emailVerified      DateTime?
   image              String?
   customImageKey     String?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
   accounts           Account[]
   sessions           Session[]
   memberships        ClinicMember[]
   uploadedFiles      PatientFile[]
-  createdProcedures  Procedure[]           @relation("ProcedureCreatedBy")
+  createdProcedures  Procedure[]                @relation("ProcedureCreatedBy")
   auditLogs          AuditLog[]
   preference         UserPreference?
-  appointments       Appointment[]         @relation("AppointmentDentist")
+  appointments       Appointment[]              @relation("AppointmentDentist")
   calendarLinks      CalendarIntegration[]
   appointmentChanges AppointmentHistory[]
+  couponRedemptions  LifetimeCouponRedemption[]
 }
 
 model Account {
@@ -157,24 +158,25 @@ model VerificationToken {
 }
 
 model Clinic {
-  id                      String                @id @default(cuid())
+  id                      String                    @id @default(cuid())
   name                    String
-  createdAt               DateTime              @default(now())
-  updatedAt               DateTime              @updatedAt
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
   members                 ClinicMember[]
   patients                Patient[]
   procedureTypes          ProcedureType[]
   procedures              Procedure[]
   files                   PatientFile[]
   auditLogs               AuditLog[]
-  timezone                String                @default("America/Sao_Paulo")
-  confirmationLeadMinutes Int                   @default(1440)
+  timezone                String                    @default("America/Sao_Paulo")
+  confirmationLeadMinutes Int                       @default(1440)
   appointmentTypes        AppointmentType[]
   appointments            Appointment[]
   appointmentMessages     AppointmentMessage[]
   appointmentChanges      AppointmentHistory[]
   calendarLinks           CalendarIntegration[]
   subscription            Subscription?
+  couponRedemption        LifetimeCouponRedemption?
 }
 
 model BillingPlan {
@@ -206,6 +208,18 @@ model Subscription {
   clinic                 Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
 
   @@index([status, updatedAt])
+}
+
+model LifetimeCouponRedemption {
+  id           String   @id @default(cuid())
+  codeHash     String   @unique
+  clinicId     String   @unique
+  redeemedById String
+  createdAt    DateTime @default(now())
+  clinic       Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  redeemedBy   User     @relation(fields: [redeemedById], references: [id], onDelete: Restrict)
+
+  @@index([redeemedById, createdAt])
 }
 
 model ClinicMember {

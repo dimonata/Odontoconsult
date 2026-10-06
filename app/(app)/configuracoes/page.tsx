@@ -42,6 +42,8 @@ export default async function SettingsPage() {
             (Number.isInteger(configuredAmount) && configuredAmount > 0 ? configuredAmount : null)
           }
           trialEndsAt={subscription?.trialEndsAt?.toISOString() ?? null}
+          lifetime={subscription?.provider === "PROMO_LIFETIME"}
+          canRedeemCoupon={context.role === "OWNER"}
         />
       </div>
       <div className="mt-5">
