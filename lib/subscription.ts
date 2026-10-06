@@ -154,7 +154,7 @@ export async function redeemLifetimeCoupon(input: {
     if (redemption && redemption.clinicId !== input.clinicId) {
       throw new AppError(422, "Cupom inválido ou já utilizado.", "INVALID_COUPON");
     }
-    if (current?.providerSubscriptionId) {
+    if (current?.providerSubscriptionId && current.status !== "CANCELLED") {
       throw new AppError(
         409,
         "Existe uma assinatura do Mercado Pago vinculada. Cancele-a antes de usar o cupom.",
