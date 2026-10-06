@@ -5,8 +5,6 @@ import type { SubscriptionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 
-const defaultPlanId = "odonto-flow-monthly";
-
 type ProviderSubscription = {
   id: string;
   preapproval_plan_id?: string | null;
@@ -20,6 +18,11 @@ type ProviderSubscription = {
     currency_id?: string;
     free_trial?: { frequency?: number; frequency_type?: string } | null;
   };
+};
+
+type ProviderPlan = {
+  id: string;
+  init_point?: string | null;
 };
 
 function config() {
@@ -49,9 +52,11 @@ async function mercadoPagoRequest<T>(path: string, init?: RequestInit) {
     },
   });
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as
-      | { message?: string; error?: string; cause?: Array<{ description?: string; code?: string }> }
-      | null;
+    const payload = (await response.json().catch(() => null)) as {
+      message?: string;
+      error?: string;
+      cause?: Array<{ description?: string; code?: string }>;
+    } | null;
     console.warn("Mercado Pago recusou a solicitação de assinatura", {
       path,
       status: response.status,
@@ -79,19 +84,20 @@ function optionalDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-async function ensurePlan(returnUrl: string) {
+async function createCheckoutPlan(returnUrl: string, clinicId: string) {
   const { amountCents, currency } = config();
   const configuredPlanId = process.env.MERCADO_PAGO_PLAN_ID?.trim();
-  if (configuredPlanId) return configuredPlanId;
-  const stored = await prisma.billingPlan.findUnique({ where: { id: defaultPlanId } });
-  if (stored && stored.amountCents === amountCents && stored.currency === currency) {
-    return stored.providerPlanId;
+  if (configuredPlanId) {
+    return mercadoPagoRequest<ProviderPlan>(
+      `/preapproval_plan/${encodeURIComponent(configuredPlanId)}`,
+    );
   }
-  const plan = await mercadoPagoRequest<{ id: string }>("/preapproval_plan", {
+  return mercadoPagoRequest<ProviderPlan>("/preapproval_plan", {
     method: "POST",
     headers: { "X-Idempotency-Key": randomUUID() },
     body: JSON.stringify({
       reason: "OdontoFlow — plano mensal",
+      external_reference: clinicId,
       auto_recurring: {
         frequency: 1,
         frequency_type: "months",
@@ -102,17 +108,6 @@ async function ensurePlan(returnUrl: string) {
       back_url: returnUrl,
     }),
   });
-  await prisma.billingPlan.upsert({
-    where: { id: defaultPlanId },
-    create: {
-      id: defaultPlanId,
-      providerPlanId: plan.id,
-      amountCents,
-      currency,
-    },
-    update: { providerPlanId: plan.id, amountCents, currency },
-  });
-  return plan.id;
 }
 
 export async function hasPremiumAccess(clinicId: string) {
@@ -144,65 +139,58 @@ export async function createSubscriptionCheckout(input: {
   }
   const { amountCents, currency, appUrl } = config();
   const returnUrl = `${appUrl}/assinatura/retorno?returnTo=${encodeURIComponent(input.returnPath)}`;
-  const planId = await ensurePlan(returnUrl);
-  const subscription = await mercadoPagoRequest<ProviderSubscription>("/preapproval", {
-    method: "POST",
-    headers: { "X-Idempotency-Key": randomUUID() },
-    body: JSON.stringify({
-      preapproval_plan_id: planId,
-      reason: "OdontoFlow — plano mensal",
-      external_reference: input.clinicId,
-      payer_email: input.payerEmail,
-      back_url: returnUrl,
-      status: "pending",
-    }),
-  });
-  if (!subscription.init_point) {
+  const plan = await createCheckoutPlan(returnUrl, input.clinicId);
+  if (!plan.init_point) {
     throw new AppError(502, "O checkout do Mercado Pago não foi criado.", "CHECKOUT_NOT_CREATED");
   }
   await prisma.subscription.upsert({
     where: { clinicId: input.clinicId },
     create: {
       clinicId: input.clinicId,
-      providerPlanId: planId,
-      providerSubscriptionId: subscription.id,
-      providerStatus: subscription.status,
-      status: providerStatus(subscription.status),
+      providerPlanId: plan.id,
+      providerStatus: "pending",
+      status: "PENDING",
       payerEmail: input.payerEmail,
       amountCents,
       currency,
-      checkoutUrl: subscription.init_point,
-      lastSyncedAt: new Date(),
+      checkoutUrl: plan.init_point,
     },
     update: {
-      providerPlanId: planId,
-      providerSubscriptionId: subscription.id,
-      providerStatus: subscription.status,
-      status: providerStatus(subscription.status),
+      providerPlanId: plan.id,
+      providerSubscriptionId: null,
+      providerStatus: "pending",
+      status: "PENDING",
       payerEmail: input.payerEmail,
       amountCents,
       currency,
-      checkoutUrl: subscription.init_point,
+      checkoutUrl: plan.init_point,
       trialEndsAt: null,
       nextPaymentAt: null,
-      lastSyncedAt: new Date(),
+      lastSyncedAt: null,
     },
   });
-  return { active: false, checkoutUrl: subscription.init_point };
+  return { active: false, checkoutUrl: plan.init_point };
 }
 
 export async function syncProviderSubscription(providerSubscriptionId: string) {
-  const current = await prisma.subscription.findUnique({
-    where: { providerSubscriptionId },
-  });
-  if (!current) return null;
   const provider = await mercadoPagoRequest<ProviderSubscription>(
     `/preapproval/${encodeURIComponent(providerSubscriptionId)}`,
   );
+  let current = await prisma.subscription.findUnique({ where: { providerSubscriptionId } });
+  if (!current && provider.preapproval_plan_id && provider.external_reference) {
+    current = await prisma.subscription.findFirst({
+      where: {
+        providerPlanId: provider.preapproval_plan_id,
+        clinicId: provider.external_reference,
+      },
+    });
+  }
+  if (!current) return null;
   const nextPaymentAt = optionalDate(provider.next_payment_date);
   return prisma.subscription.update({
     where: { id: current.id },
     data: {
+      providerSubscriptionId: provider.id,
       providerStatus: provider.status,
       status: providerStatus(provider.status),
       payerEmail: provider.payer_email || current.payerEmail,
@@ -220,6 +208,27 @@ export async function syncProviderSubscription(providerSubscriptionId: string) {
 
 export async function syncClinicSubscription(clinicId: string) {
   const current = await getSubscription(clinicId);
-  if (!current?.providerSubscriptionId) return current;
-  return syncProviderSubscription(current.providerSubscriptionId);
+  if (!current) return null;
+  if (current.providerSubscriptionId) {
+    return syncProviderSubscription(current.providerSubscriptionId);
+  }
+  if (!current.providerPlanId) return current;
+  const query = new URLSearchParams({
+    preapproval_plan_id: current.providerPlanId,
+    payer_email: current.payerEmail,
+    limit: "20",
+  });
+  const search = await mercadoPagoRequest<{ results?: ProviderSubscription[] }>(
+    `/preapproval/search?${query.toString()}`,
+  );
+  const results = search.results ?? [];
+  const provider =
+    results.find((candidate) => candidate.external_reference === current.clinicId) ??
+    (results.length === 1 ? results[0] : undefined);
+  if (!provider) return current;
+  await prisma.subscription.update({
+    where: { id: current.id },
+    data: { providerSubscriptionId: provider.id },
+  });
+  return syncProviderSubscription(provider.id);
 }
