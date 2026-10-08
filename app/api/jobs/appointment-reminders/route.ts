@@ -40,6 +40,7 @@ async function runAutomatedMessages(request: Request) {
   let failed = 0;
 
   for (const appointment of appointments) {
+    if (!appointment.patient || !appointment.patientId) continue;
     const idempotencyKey = `confirmation:${appointment.id}:${appointment.startAt.toISOString()}`;
     const message = await prisma.appointmentMessage.upsert({
       where: { idempotencyKey },
@@ -137,6 +138,7 @@ async function runAutomatedMessages(request: Request) {
     INNER JOIN "Subscription" s ON s."clinicId" = c."id"
     WHERE p."archivedAt" IS NULL
       AND p."whatsappOptIn" = true
+      AND c."birthdayMessagesEnabled" = true
       AND s."status" = 'AUTHORIZED'
       AND EXTRACT(MONTH FROM p."birthDate") =
         EXTRACT(MONTH FROM (${now}::timestamptz AT TIME ZONE c."timezone"))

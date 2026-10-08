@@ -147,7 +147,7 @@ export async function syncAppointmentToGoogle(appointmentId: string) {
       return;
     }
 
-    const firstName = appointment.patient.fullName.trim().split(/\s+/)[0];
+    const firstName = (appointment.patient?.fullName ?? appointment.guestName ?? "Paciente").trim().split(/\s+/)[0];
     const body = JSON.stringify({
       summary: `Consulta odontológica — ${firstName}`,
       description: "Agendamento realizado pelo sistema odontológico.",

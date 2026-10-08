@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { LoaderCircle, Save, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { appointmentSchema } from "@/schemas/appointment";
+import { formatPhone } from "@/lib/normalizers";
 
 type PatientOption = { id: string; fullName: string; cpf: string; phone: string };
 type TypeOption = { id: string; name: string; defaultMinutes: number };
@@ -27,6 +28,9 @@ export function AppointmentForm({
     patients.find((patient) => patient.id === initial.patientId)?.fullName ?? "",
   );
   const [patientId, setPatientId] = useState(initial.patientId ?? "");
+  const [withoutRecord, setWithoutRecord] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
   const [durationPreset, setDurationPreset] = useState("60");
   const [customDuration, setCustomDuration] = useState("60");
   const [submitting, setSubmitting] = useState(false);
@@ -47,9 +51,15 @@ export function AppointmentForm({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!withoutRecord && !patientId) {
+      setErrors({ patientId: "Selecione um paciente ou use a opção sem ficha." });
+      return;
+    }
     const form = new FormData(event.currentTarget);
     const payload = {
-      patientId,
+      patientId: withoutRecord ? null : patientId || null,
+      guestName: withoutRecord ? guestName : undefined,
+      guestPhone: withoutRecord ? guestPhone : undefined,
       dentistId: String(form.get("dentistId") ?? ""),
       appointmentTypeId: String(form.get("appointmentTypeId") ?? ""),
       date: String(form.get("date") ?? ""),
@@ -110,14 +120,35 @@ export function AppointmentForm({
   return (
     <form onSubmit={submit} className="card space-y-6">
       <div>
+        <p className="label">Paciente</p>
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button type="button" className={withoutRecord ? "btn-secondary" : "btn-primary"} onClick={() => setWithoutRecord(false)}>Paciente cadastrado</button>
+          <button type="button" className={withoutRecord ? "btn-primary" : "btn-secondary"} onClick={() => setWithoutRecord(true)}>Primeira consulta, sem ficha</button>
+        </div>
+        {withoutRecord ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              <span className="label">Nome para a consulta *</span>
+              <input className="input" value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={120} required />
+              {errors.guestName && <span className="mt-1 block text-xs" style={{ color: "var(--danger)" }}>{errors.guestName}</span>}
+            </label>
+            <label>
+              <span className="label">Telefone de contato *</span>
+              <input className="input" type="tel" inputMode="tel" value={guestPhone} onChange={(event) => setGuestPhone(formatPhone(event.target.value))} maxLength={15} placeholder="(00) 00000-0000" required />
+              {errors.guestPhone && <span className="mt-1 block text-xs" style={{ color: "var(--danger)" }}>{errors.guestPhone}</span>}
+            </label>
+            <p className="text-xs sm:col-span-2" style={{ color: "var(--muted)" }}>A ficha poderá ser vinculada depois. Sem ficha e autorização, não haverá confirmação automática por WhatsApp.</p>
+          </div>
+        ) : (
+        <>
         <label className="label" htmlFor="patientSearch">
-          Paciente *
+          Pesquisar paciente cadastrado *
         </label>
         <input
           id="patientSearch"
           className="input"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => { setQuery(event.target.value); setPatientId(""); }}
           placeholder="Pesquisar por nome, CPF ou telefone"
         />
         <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border">
@@ -151,6 +182,8 @@ export function AppointmentForm({
         >
           <UserPlus className="size-4" /> Cadastrar novo paciente
         </Link>
+        </>
+        )}
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">

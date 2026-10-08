@@ -80,6 +80,7 @@ export async function getDashboardData(
         id: true,
         startAt: true,
         status: true,
+        guestName: true,
         patient: { select: { fullName: true } },
         appointmentType: { select: { name: true } },
       },
@@ -94,6 +95,7 @@ export async function getDashboardData(
       select: {
         id: true,
         startAt: true,
+        guestName: true,
         patient: { select: { id: true, fullName: true } },
         appointmentType: { select: { name: true } },
       },

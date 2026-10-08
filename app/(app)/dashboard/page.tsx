@@ -81,7 +81,7 @@ export default async function DashboardPage({
                       }).format(item.startAt)}
                     </span>
                     <div>
-                      <p className="text-sm font-semibold">{item.patient.fullName}</p>
+                      <p className="text-sm font-semibold">{item.patient?.fullName ?? item.guestName ?? "Sem ficha"}</p>
                       <p className="text-xs" style={{ color: "var(--muted)" }}>
                         {item.appointmentType.name}
                       </p>
@@ -115,15 +115,15 @@ export default async function DashboardPage({
                   hour12: false,
                 }).format(data.nextAppointment.startAt)}
               </p>
-              <p className="mt-2 font-semibold">{data.nextAppointment.patient.fullName}</p>
+              <p className="mt-2 font-semibold">{data.nextAppointment.patient?.fullName ?? data.nextAppointment.guestName ?? "Sem ficha"}</p>
               <p className="text-sm" style={{ color: "var(--muted)" }}>
                 {data.nextAppointment.appointmentType.name}
               </p>
               <Link
-                href={`/pacientes/${data.nextAppointment.patient.id}`}
+                href={data.nextAppointment.patient ? `/pacientes/${data.nextAppointment.patient.id}` : `/agenda/${data.nextAppointment.id}`}
                 className="btn-secondary mt-5"
               >
-                Ver paciente
+                {data.nextAppointment.patient ? "Ver paciente" : "Ver consulta"}
               </Link>
             </>
           ) : (

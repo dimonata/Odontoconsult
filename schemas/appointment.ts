@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { onlyDigits } from "@/lib/normalizers";
 
 export const appointmentStatuses = [
   "SCHEDULED",
@@ -9,8 +10,10 @@ export const appointmentStatuses = [
   "NO_SHOW",
 ] as const;
 
-export const appointmentSchema = z.object({
-  patientId: z.string().min(1, "Selecione um paciente."),
+const appointmentFields = z.object({
+  patientId: z.string().min(1).nullable().optional(),
+  guestName: z.string().trim().max(120).optional(),
+  guestPhone: z.string().trim().max(20).optional(),
   dentistId: z.string().min(1, "Selecione o dentista."),
   appointmentTypeId: z.string().min(1, "Selecione o tipo de atendimento."),
   date: z.iso.date("Informe uma data válida."),
@@ -19,7 +22,17 @@ export const appointmentSchema = z.object({
   notes: z.string().trim().max(2000).optional().default(""),
 });
 
-export const appointmentUpdateSchema = appointmentSchema.partial().extend({
+export const appointmentSchema = appointmentFields.superRefine((value, context) => {
+  if (value.patientId) return;
+  if (!value.guestName || value.guestName.length < 3) {
+    context.addIssue({ code: "custom", path: ["guestName"], message: "Informe o nome para a consulta." });
+  }
+  if (![10, 11].includes(onlyDigits(value.guestPhone ?? "").length)) {
+    context.addIssue({ code: "custom", path: ["guestPhone"], message: "Informe um telefone válido." });
+  }
+});
+
+export const appointmentUpdateSchema = appointmentFields.partial().extend({
   notes: z.string().trim().max(2000).optional(),
   status: z.enum(appointmentStatuses).optional(),
   cancellationSource: z.enum(["PATIENT", "DENTIST", "SYSTEM"]).optional(),

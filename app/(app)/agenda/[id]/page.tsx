@@ -39,6 +39,8 @@ export default async function AppointmentPage({ params }: { params: Promise<{ id
           ),
           notes: appointment.notes,
           patient: appointment.patient,
+          guestName: appointment.guestName,
+          guestPhone: appointment.guestPhone,
           dentist: appointment.dentist,
           appointmentType: appointment.appointmentType,
           timezone: clinic.timezone,

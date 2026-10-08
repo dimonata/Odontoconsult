@@ -58,7 +58,8 @@ export default async function AgendaPage({
     endAt: item.endAt.toISOString(),
     status: item.status,
     cancellationSource: item.cancellationSource,
-    patient: { id: item.patient.id, fullName: item.patient.fullName },
+    patient: item.patient ? { id: item.patient.id, fullName: item.patient.fullName } : null,
+    guestName: item.guestName,
     dentist: item.dentist,
     appointmentType: item.appointmentType,
   }));

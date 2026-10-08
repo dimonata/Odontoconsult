@@ -6,9 +6,12 @@ import { prisma } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { localParts, zonedDateTimeToUtc } from "@/lib/timezone";
 import { googleCalendarConflict, syncAppointmentToGoogle } from "@/services/google-calendar";
+import { onlyDigits } from "@/lib/normalizers";
 
 type AppointmentInput = {
-  patientId: string;
+  patientId?: string | null;
+  guestName?: string;
+  guestPhone?: string;
   dentistId: string;
   appointmentTypeId: string;
   date: string;
@@ -29,10 +32,12 @@ async function resources(context: AuthContext, input: AppointmentInput) {
       where: { id: context.clinicId },
       select: { timezone: true, confirmationLeadMinutes: true },
     }),
-    prisma.patient.findFirst({
-      where: { id: input.patientId, clinicId: context.clinicId, archivedAt: null },
-      select: { id: true },
-    }),
+    input.patientId
+      ? prisma.patient.findFirst({
+          where: { id: input.patientId, clinicId: context.clinicId, archivedAt: null },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
     prisma.appointmentType.findFirst({
       where: { id: input.appointmentTypeId, clinicId: context.clinicId, active: true },
       select: { id: true },
@@ -48,7 +53,11 @@ async function resources(context: AuthContext, input: AppointmentInput) {
     }),
   ]);
   if (!clinic) throw new AppError(404, "Consultório não encontrado.", "CLINIC_NOT_FOUND");
-  if (!patient) throw new AppError(404, "Paciente não encontrado.", "PATIENT_NOT_FOUND");
+  if (input.patientId && !patient)
+    throw new AppError(404, "Paciente não encontrado.", "PATIENT_NOT_FOUND");
+  if (!input.patientId && (!input.guestName?.trim() || ![10, 11].includes(onlyDigits(input.guestPhone ?? "").length))) {
+    throw new AppError(422, "Informe nome e telefone para a consulta sem ficha.", "GUEST_REQUIRED");
+  }
   if (!appointmentType)
     throw new AppError(404, "Tipo de atendimento não encontrado.", "TYPE_NOT_FOUND");
   if (!dentist) throw new AppError(404, "Dentista não encontrado.", "DENTIST_NOT_FOUND");
@@ -129,7 +138,9 @@ export async function createAppointment(context: AuthContext, input: Appointment
     const created = await tx.appointment.create({
       data: {
         clinicId: context.clinicId,
-        patientId: input.patientId,
+        patientId: input.patientId ?? null,
+        guestName: input.patientId ? null : input.guestName?.trim(),
+        guestPhone: input.patientId ? null : input.guestPhone?.trim(),
         dentistId: input.dentistId,
         appointmentTypeId: input.appointmentTypeId,
         startAt,
@@ -185,7 +196,9 @@ export async function updateAppointment(
   if (!current) throw new AppError(404, "Consulta não encontrada.", "APPOINTMENT_NOT_FOUND");
   const currentLocal = localParts(current.startAt, current.clinic.timezone);
   const completeInput: AppointmentInput = {
-    patientId: input.patientId ?? current.patientId,
+    patientId: input.patientId !== undefined ? input.patientId : current.patientId,
+    guestName: input.guestName ?? current.guestName ?? undefined,
+    guestPhone: input.guestPhone ?? current.guestPhone ?? undefined,
     dentistId: input.dentistId ?? current.dentistId,
     appointmentTypeId: input.appointmentTypeId ?? current.appointmentTypeId,
     date: input.date ?? currentLocal.date,
@@ -224,7 +237,9 @@ export async function updateAppointment(
     await tx.appointment.update({
       where: { id: current.id },
       data: {
-        patientId: completeInput.patientId,
+        patientId: completeInput.patientId ?? null,
+        guestName: completeInput.patientId ? null : completeInput.guestName?.trim(),
+        guestPhone: completeInput.patientId ? null : completeInput.guestPhone?.trim(),
         dentistId: completeInput.dentistId,
         appointmentTypeId: completeInput.appointmentTypeId,
         startAt,

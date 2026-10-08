@@ -14,7 +14,8 @@ export type AgendaAppointment = {
   endAt: string;
   status: AppointmentStatusKey;
   cancellationSource: "PATIENT" | "DENTIST" | "SYSTEM" | null;
-  patient: { id: string; fullName: string };
+  patient: { id: string; fullName: string } | null;
+  guestName: string | null;
   dentist: { id: string; name: string | null };
   appointmentType: { id: string; name: string; color: string };
 };
@@ -104,7 +105,7 @@ function ScheduleAppointment({
   return (
     <Link
       href={`/agenda/${item.id}`}
-      title={`${item.patient.fullName} — ${status.label}`}
+      title={`${item.patient?.fullName ?? item.guestName ?? "Sem ficha"} — ${status.label}`}
       className={`absolute right-1 left-1 z-10 overflow-hidden rounded-md border-l-4 p-2 shadow-sm transition hover:brightness-95 ${item.status === "CANCELLED" ? "opacity-55" : ""}`}
       style={{
         top,
@@ -114,7 +115,7 @@ function ScheduleAppointment({
       }}
     >
       <p className="truncate text-[11px] font-bold">
-        {time(item.startAt, timeZone)} · {item.patient.fullName}
+        {time(item.startAt, timeZone)} · {item.patient?.fullName ?? item.guestName ?? "Sem ficha"}
       </p>
       {!compact && (
         <p className="mt-0.5 truncate text-[10px]" style={{ color: "var(--muted)" }}>
@@ -224,7 +225,7 @@ function CalendarCard({ item, timeZone }: { item: AgendaAppointment; timeZone: s
       <p className="text-xs font-bold">
         {time(item.startAt, timeZone)} – {time(item.endAt, timeZone)}
       </p>
-      <p className="mt-0.5 truncate text-xs font-semibold">{item.patient.fullName}</p>
+      <p className="mt-0.5 truncate text-xs font-semibold">{item.patient?.fullName ?? item.guestName ?? "Sem ficha"}</p>
       <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--muted)" }}>
         {item.appointmentType.name} · {durationMinutes} min
       </p>
@@ -277,7 +278,7 @@ export function AgendaCalendar({
         appointment.status === "CANCELLED" &&
         appointment.cancellationSource === "PATIENT"
       ) {
-        toast.info(`${appointment.patient.fullName} cancelou a consulta.`);
+        toast.info(`${appointment.patient?.fullName ?? appointment.guestName ?? "A pessoa"} cancelou a consulta.`);
       }
     }
     previousStatuses.current = new Map(

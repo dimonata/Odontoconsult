@@ -3,10 +3,65 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, History, LoaderCircle, RefreshCw } from "lucide-react";
+import { CalendarClock, History, LoaderCircle, RefreshCw, UserRoundPlus } from "lucide-react";
 import { toast } from "sonner";
 import { AppointmentStatusBadge } from "@/components/appointment-status-badge";
 import type { AppointmentStatusKey } from "@/lib/appointment-ui";
+
+function LinkPatient({ appointmentId, onLinked }: { appointmentId: string; onLinked: () => void }) {
+  const [query, setQuery] = useState("");
+  const [items, setItems] = useState<Array<{ id: string; fullName: string; phone: string }>>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function search() {
+    if (query.trim().length < 2) return;
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/patients/search?q=${encodeURIComponent(query.trim())}`);
+      if (!response.ok) throw new Error("SEARCH_FAILED");
+      const data = (await response.json()) as { items?: typeof items };
+      setItems(data.items ?? []);
+    } catch {
+      toast.error("Não foi possível pesquisar pacientes.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function link(patientId: string) {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/appointments/${appointmentId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ patientId }),
+      });
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        throw new Error(data.error ?? "Não foi possível vincular a ficha.");
+      }
+      toast.success("Ficha vinculada à consulta.");
+      onLinked();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível vincular a ficha.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="card">
+      <h2 className="flex items-center gap-2 font-semibold"><UserRoundPlus className="size-5" /> Vincular ficha de paciente</h2>
+      <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>Quando a ficha estiver pronta, pesquise o paciente e vincule-a a esta consulta.</p>
+      <div className="mt-4 flex gap-2">
+        <input className="input" value={query} onChange={(event) => { setQuery(event.target.value); setItems([]); }} placeholder="Nome, CPF ou telefone" aria-label="Pesquisar paciente" />
+        <button type="button" className="btn-secondary" disabled={loading || query.trim().length < 2} onClick={() => void search()}>{loading ? "Buscando..." : "Buscar"}</button>
+      </div>
+      {items.length > 0 && <div className="mt-3 divide-y rounded-xl border">{items.map((item) => <button key={item.id} type="button" disabled={loading} onClick={() => void link(item.id)} className="flex w-full items-center justify-between gap-2 p-3 text-left text-sm"><span>{item.fullName} · {item.phone}</span><span className="font-semibold" style={{ color: "var(--primary)" }}>Vincular</span></button>)}</div>}
+      <Link href="/pacientes/novo" className="mt-3 inline-block text-sm font-semibold" style={{ color: "var(--primary)" }}>Cadastrar nova ficha</Link>
+    </section>
+  );
+}
 
 export function AppointmentDetails({
   appointment,
@@ -20,7 +75,9 @@ export function AppointmentDetails({
     startTime: string;
     durationMinutes: number;
     notes: string | null;
-    patient: { id: string; fullName: string; phone: string };
+    patient: { id: string; fullName: string; phone: string } | null;
+    guestName: string | null;
+    guestPhone: string | null;
     dentist: { name: string | null };
     appointmentType: { name: string; color: string };
     timezone: string;
@@ -111,19 +168,18 @@ export function AppointmentDetails({
               </span>
             </div>
             <h1 className="mt-4 text-3xl font-bold tracking-tight">
-              {appointment.patient.fullName}
+              {appointment.patient?.fullName ?? appointment.guestName ?? "Pessoa sem ficha"}
             </h1>
             <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
               {appointment.date.split("-").reverse().join("/")} · {appointment.startTime} ·{" "}
               {appointment.durationMinutes} minutos
             </p>
             <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-              Dentista: {appointment.dentist.name ?? "Profissional"} · {appointment.patient.phone}
+              Dentista: {appointment.dentist.name ?? "Profissional"} · {appointment.patient?.phone ?? appointment.guestPhone}
             </p>
+            {!appointment.patient && <p className="mt-2 text-xs font-semibold" style={{ color: "var(--muted)" }}>Consulta sem ficha de paciente</p>}
           </div>
-          <Link href={`/pacientes/${appointment.patient.id}`} className="btn-secondary">
-            Ver paciente
-          </Link>
+          {appointment.patient && <Link href={`/pacientes/${appointment.patient.id}`} className="btn-secondary">Ver paciente</Link>}
         </div>
         {appointment.notes && (
           <div
@@ -137,6 +193,8 @@ export function AppointmentDetails({
           </div>
         )}
       </section>
+
+      {!appointment.patient && <LinkPatient appointmentId={appointment.id} onLinked={() => router.refresh()} />}
 
       {appointment.calendarSyncStatus === "FAILED" && (
         <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">

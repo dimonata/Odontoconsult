@@ -20,6 +20,16 @@ describe("agendamentos", () => {
     expect(appointmentSchema.safeParse({ ...valid, durationMinutes: 5 }).success).toBe(false);
   });
 
+  it("permite primeira consulta sem ficha com nome e telefone de contato", () => {
+    expect(appointmentSchema.safeParse({ ...valid, patientId: null, guestName: "Ana Silva", guestPhone: "(11) 99999-9999" }).success).toBe(true);
+    expect(appointmentSchema.safeParse({ ...valid, patientId: null, guestName: "Ana Silva", guestPhone: "" }).success).toBe(false);
+    expect(appointmentSchema.safeParse({ ...valid, patientId: null, guestName: "", guestPhone: "(11) 99999-9999" }).success).toBe(false);
+  });
+
+  it("permite vincular uma ficha ao agendamento posteriormente", () => {
+    expect(appointmentUpdateSchema.parse({ patientId: "patient-2" })).toEqual({ patientId: "patient-2" });
+  });
+
   it("aceita atualização somente de status sem preencher outros campos", () => {
     expect(appointmentUpdateSchema.parse({ status: "CONFIRMED" })).toEqual({
       status: "CONFIRMED",

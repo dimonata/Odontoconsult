@@ -170,6 +170,7 @@ model Clinic {
   auditLogs               AuditLog[]
   timezone                String                    @default("America/Sao_Paulo")
   confirmationLeadMinutes Int                       @default(1440)
+  birthdayMessagesEnabled Boolean                   @default(false)
   appointmentTypes        AppointmentType[]
   appointments            Appointment[]
   appointmentMessages     AppointmentMessage[]
@@ -284,7 +285,9 @@ model AppointmentType {
 model Appointment {
   id                      String               @id @default(cuid())
   clinicId                String
-  patientId               String
+  patientId               String?
+  guestName               String?
+  guestPhone              String?
   dentistId               String
   appointmentTypeId       String
   startAt                 DateTime             @db.Timestamptz(3)
@@ -303,7 +306,7 @@ model Appointment {
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
   clinic                  Clinic               @relation(fields: [clinicId], references: [id], onDelete: Restrict)
-  patient                 Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  patient                 Patient?             @relation(fields: [patientId], references: [id], onDelete: Restrict)
   dentist                 User                 @relation("AppointmentDentist", fields: [dentistId], references: [id], onDelete: Restrict)
   appointmentType         AppointmentType      @relation(fields: [appointmentTypeId], references: [id], onDelete: Restrict)
   messages                AppointmentMessage[]
